@@ -39,7 +39,7 @@ Once configured, you can ask your AI assistant things like:
 ## Requirements
 
 - Python 3.10+
-- [uv](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- [uv](https://docs.astral.sh/uv/) or [Nix](https://nixos.org/)
 - A running [Bambuddy](https://github.com/maziggy/bambuddy) instance
 
 ## Installation
@@ -54,6 +54,12 @@ Or install from source:
 git clone https://github.com/maziggy/bambuddy-mcp.git
 cd bambuddy-mcp
 uv sync
+```
+
+Or run the reproducible Nix package:
+
+```bash
+nix run github:kahlstrm/bambuddy-mcp
 ```
 
 ## Configuration
@@ -100,19 +106,17 @@ For development or running from source:
 }
 ```
 
-### NixOS
+### Using Nix
 
-On NixOS, use the system Python to avoid dynamic linking issues:
+The flake packages Bambuddy MCP with Python dependencies from its pinned
+Nixpkgs input. It does not use `uv.lock`.
 
 ```json
 {
   "mcpServers": {
     "bambuddy": {
-      "command": "nix-shell",
-      "args": [
-        "-p", "uv",
-        "--run", "UV_PYTHON=/run/current-system/sw/bin/python3 uv --directory /path/to/bambuddy-mcp run bambuddy-mcp"
-      ],
+      "command": "nix",
+      "args": ["run", "github:kahlstrm/bambuddy-mcp"],
       "env": {
         "BAMBUDDY_URL": "http://localhost:8000",
         "BAMBUDDY_API_KEY": "your-api-key"
@@ -121,6 +125,10 @@ On NixOS, use the system Python to avoid dynamic linking issues:
   }
 }
 ```
+
+For development, `nix develop` provides Python, the runtime and test
+dependencies, pytest, and Ruff. Run `nix flake check` to build the package and
+execute the complete test and formatting suite.
 
 ### Environment Variables
 
