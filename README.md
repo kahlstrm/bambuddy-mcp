@@ -135,7 +135,8 @@ execute the complete test and formatting suite.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BAMBUDDY_URL` | `http://localhost:8000` | Base URL of your Bambuddy instance |
-| `BAMBUDDY_API_KEY` | _(empty)_ | API key for authentication (create in Bambuddy Settings) |
+| `BAMBUDDY_API_KEY` | _(empty)_ | API key for authentication; takes precedence over the key file |
+| `BAMBUDDY_API_KEY_FILE` | `$XDG_CONFIG_HOME/bambuddy/api-key` or `~/.config/bambuddy/api-key` | Read the API key from a private file |
 | `BAMBUDDY_DIRECT_MODE` | `false` | Set to `true` to expose all 430+ tools directly instead of the meta-tools |
 | `BAMBUDDY_CENSOR_ACCESS_CODE` | `true` | Mask `access_code` fields in API responses |
 | `BAMBUDDY_CENSOR_SERIAL` | `true` | Mask `serial_number` fields (keeps first 2 + last 2 chars) |
@@ -143,6 +144,21 @@ execute the complete test and formatting suite.
 | `BAMBUDDY_UPLOAD_ROOT` | Current working directory | Restrict local file uploads to this directory |
 
 > **Note:** By default, the server separates discovered operations between `execute_read_tool` and `execute_write_tool`. The server rejects operations sent through the wrong executor. Set `BAMBUDDY_DIRECT_MODE=true` to expose all 430+ tools directly with per-operation safety annotations (uses significantly more context).
+
+### API key file
+
+Store the Bambuddy API key outside MCP client configuration:
+
+```bash
+mkdir -p ~/.config/bambuddy
+$EDITOR ~/.config/bambuddy/api-key
+chmod 600 ~/.config/bambuddy/api-key
+```
+
+The file must contain only the API key, with an optional trailing newline, and
+must not be accessible by group or other users. Set `BAMBUDDY_API_KEY_FILE` if
+the MCP client should use another path. `BAMBUDDY_API_KEY` remains available
+for environments that inject secrets directly and takes precedence when set.
 
 ### Local file uploads
 

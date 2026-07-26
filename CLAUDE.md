@@ -50,7 +50,7 @@ The server uses the low-level MCP `Server` class (not `FastMCP`) so it can regis
 
 ### Module Breakdown
 
-- **config.py** — `Config` dataclass with `from_env()` for loading `BAMBUDDY_URL`, `BAMBUDDY_API_KEY`, `BAMBUDDY_DIRECT_MODE`, `BAMBUDDY_CENSOR_*`, and `BAMBUDDY_UPLOAD_ROOT`
+- **config.py** — `Config` dataclass with `from_env()` for loading Bambuddy connection settings, an environment or file-backed API key, response censoring, and the upload root
 - **openapi.py** — Tool generation pipeline:
   - `parse_openapi_to_tools()` — Iterates all OpenAPI paths/methods
   - `clean_tool_name()` — Converts FastAPI operation IDs to readable names
