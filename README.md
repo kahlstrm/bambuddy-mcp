@@ -9,13 +9,15 @@ This MCP server dynamically generates tools from Bambuddy's OpenAPI spec at star
 
 On startup, the server fetches the OpenAPI spec from your running Bambuddy instance (`/openapi.json`), parses all 430+ endpoints, and indexes them by category.
 
-By default, only **3 meta-tools** are registered with the AI assistant:
+By default, only **5 meta-tools** are registered with the AI assistant:
 
 | Meta-tool | Purpose |
 |-----------|---------|
 | `list_categories` | Browse available API categories |
-| `search_tools` | Find tools by keyword (with fuzzy matching) |
-| `execute_tool` | Call any discovered tool by name |
+| `search_tools` | Find tools by keyword and inspect their read/write access |
+| `execute_read_tool` | Call a discovered `GET` operation |
+| `execute_write_tool` | Call a discovered non-`GET` operation |
+| `find_printer` | Find a printer ID by name |
 
 This keeps the context window small while still providing full API coverage. The AI searches for what it needs, inspects the input schema, and executes — all on demand.
 
@@ -132,7 +134,7 @@ On NixOS, use the system Python to avoid dynamic linking issues:
 | `BAMBUDDY_CENSOR_MODEL_FILENAME` | `false` | Mask model filenames (`.3mf`, `.gcode`) in API responses and prevent direct base64 image embedding |
 | `BAMBUDDY_UPLOAD_ROOT` | Current working directory | Restrict local file uploads to this directory |
 
-> **Note:** By default, the server exposes meta-tools (`list_categories`, `search_tools`, `execute_tool`, `find_printer`) that let AI assistants discover and call API endpoints on demand. Set `BAMBUDDY_DIRECT_MODE=true` to expose all 430+ tools directly (uses significantly more context).
+> **Note:** By default, the server separates discovered operations between `execute_read_tool` and `execute_write_tool`. The server rejects operations sent through the wrong executor. Set `BAMBUDDY_DIRECT_MODE=true` to expose all 430+ tools directly with per-operation safety annotations (uses significantly more context).
 
 ### Local file uploads
 
@@ -144,4 +146,3 @@ directory.
 Only multipart fields declared as binary files in Bambuddy's OpenAPI document
 are opened. Relative paths resolve from the upload root, and resolved paths
 outside that root—including escaping symlinks—are rejected.
-

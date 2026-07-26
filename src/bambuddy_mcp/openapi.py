@@ -181,6 +181,7 @@ def parse_openapi_to_tools(spec: dict) -> list[dict]:
                     "query_params": query_param_names,
                     "path": path,
                     "method": method,
+                    "access": "read" if method == "get" else "write",
                     "tag": operation.get("tags", [""])[0],
                     "file_params": file_param_names,
                     "has_file_upload": "multipart/form-data"

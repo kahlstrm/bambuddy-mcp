@@ -1,5 +1,7 @@
 """Tests for OpenAPI parsing."""
 
+import pytest
+
 from bambuddy_mcp.openapi import (
     clean_tool_name,
     resolve_ref,
@@ -140,7 +142,35 @@ class TestParseOpenapiToTools:
         assert len(tools) == 1
         assert tools[0]["name"] == "get_item"
         assert tools[0]["method"] == "get"
+        assert tools[0]["access"] == "read"
         assert tools[0]["path"] == "/api/v1/items/{item_id}"
+
+    @pytest.mark.parametrize(
+        ("method", "expected"),
+        [
+            ("get", "read"),
+            ("post", "write"),
+            ("put", "write"),
+            ("patch", "write"),
+            ("delete", "write"),
+        ],
+    )
+    def test_classifies_access_from_http_method(self, method, expected):
+        spec = {
+            "paths": {
+                "/operation": {
+                    method: {
+                        "operationId": f"operation_{method}",
+                        "tags": ["operations"],
+                    }
+                }
+            },
+            "components": {"schemas": {}},
+        }
+
+        tools = parse_openapi_to_tools(spec)
+
+        assert tools[0]["access"] == expected
 
     def test_handles_duplicate_names(self):
         """Duplicate tool names get numbered suffixes."""

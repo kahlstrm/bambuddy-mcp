@@ -7,7 +7,7 @@ import sys
 import httpx
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import ImageContent, TextContent, Tool
+from mcp.types import ImageContent, TextContent, Tool, ToolAnnotations
 
 from bambuddy_mcp.config import Config
 from bambuddy_mcp.http import build_url, execute_api_call, fetch_openapi_spec
@@ -15,6 +15,182 @@ from bambuddy_mcp.openapi import parse_openapi_to_tools
 from bambuddy_mcp.search import search_tools
 
 PRINTER_FIELDS = ("id", "name", "model", "ip_address", "is_active")
+
+
+def _tool_access(tool_def: dict) -> str:
+    return tool_def.get(
+        "access",
+        "read" if tool_def.get("method") == "get" else "write",
+    )
+
+
+def _tool_annotations(tool_def: dict) -> ToolAnnotations:
+    is_read = _tool_access(tool_def) == "read"
+    return ToolAnnotations(
+        readOnlyHint=is_read,
+        destructiveHint=not is_read,
+        idempotentHint=is_read,
+        openWorldHint=True,
+    )
+
+
+def _validate_tool_access(expected_access: str, tool_def: dict) -> None:
+    actual_access = _tool_access(tool_def)
+    if actual_access == expected_access:
+        return
+
+    executor = "execute_read_tool" if actual_access == "read" else "execute_write_tool"
+    raise ValueError(
+        f"{tool_def['name']} is a {actual_access} operation; use {executor}"
+    )
+
+
+def _execution_input_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "The tool name from search_tools results",
+            },
+            "arguments": {
+                "type": "object",
+                "description": "Arguments to pass to the tool",
+                "default": {},
+            },
+            "embed_image": {
+                "type": "boolean",
+                "description": (
+                    "Embed image data in the response instead of saving it to a file"
+                ),
+                "default": False,
+            },
+        },
+        "required": ["name"],
+    }
+
+
+def _build_proxy_tools(censor_note: str) -> list[Tool]:
+    read_annotations = _tool_annotations({"method": "get"})
+    write_annotations = _tool_annotations({"method": "post"})
+    return [
+        Tool(
+            name="list_categories",
+            description=(
+                "List all available tool categories and the total tool count. "
+                "Use this first to understand what's available."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+            annotations=read_annotations,
+        ),
+        Tool(
+            name="search_tools",
+            description=(
+                "Search for tools by keyword. Returns matching tool names, "
+                "access classifications, descriptions, and input schemas."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Search keyword to match against tool names "
+                            "and descriptions"
+                        ),
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": (
+                            "Optional category to filter by (from list_categories)"
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results to return (default 10)",
+                        "default": 10,
+                    },
+                },
+                "required": ["query"],
+            },
+            annotations=read_annotations,
+        ),
+        Tool(
+            name="execute_read_tool",
+            description=(
+                "Execute a read-only Bambuddy GET operation by name. "
+                "Use search_tools first and select an operation with "
+                f"access=read.{censor_note}"
+            ),
+            inputSchema=_execution_input_schema(),
+            annotations=read_annotations,
+        ),
+        Tool(
+            name="execute_write_tool",
+            description=(
+                "Execute a state-changing Bambuddy operation by name. "
+                "This may control the printer or delete data. Use search_tools "
+                f"first and select an operation with access=write.{censor_note}"
+            ),
+            inputSchema=_execution_input_schema(),
+            annotations=write_annotations,
+        ),
+        Tool(
+            name="find_printer",
+            description=(
+                "Find a printer by name. Returns printer details including "
+                "the printer_id needed by other tools."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": (
+                            "Printer name or partial name to search for "
+                            "(case-insensitive)"
+                        ),
+                    },
+                },
+                "required": ["name"],
+            },
+            annotations=read_annotations,
+        ),
+    ]
+
+
+async def _execute_discovered_tool(
+    expected_access: str,
+    arguments: dict,
+    config: Config,
+    tool_map: dict,
+) -> list[TextContent | ImageContent]:
+    tool_name = arguments.get("name", "")
+    if tool_name not in tool_map:
+        return [
+            TextContent(
+                type="text",
+                text=(
+                    f"Unknown tool: {tool_name}. "
+                    "Use search_tools to find available tools."
+                ),
+            )
+        ]
+
+    tool_def = tool_map[tool_name]
+    try:
+        _validate_tool_access(expected_access, tool_def)
+    except ValueError as error:
+        return [TextContent(type="text", text=str(error))]
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        return await execute_api_call(
+            config,
+            tool_def,
+            arguments.get("arguments", {}),
+            client,
+            embed_image=arguments.get("embed_image", False),
+        )
 
 
 async def _find_printers(
@@ -118,6 +294,7 @@ async def main():
                     name=t["name"],
                     description=t["description"],
                     inputSchema=t["input_schema"],
+                    annotations=_tool_annotations(t),
                 )
                 for t in tool_defs
             ]
@@ -141,7 +318,7 @@ async def main():
                 )
 
     else:
-        # Proxy mode (default): expose 4 meta-tools for discovery + execution
+        # Proxy mode (default): expose 5 meta-tools for discovery + execution
         censored = []
         if config.censor_access_code:
             censored.append("access_code")
@@ -159,78 +336,7 @@ async def main():
 
         @server.list_tools()
         async def list_tools_proxy() -> list[Tool]:
-            return [
-                Tool(
-                    name="list_categories",
-                    description="List all available tool categories and the total tool count. Use this first to understand what's available.",
-                    inputSchema={"type": "object", "properties": {}},
-                ),
-                Tool(
-                    name="search_tools",
-                    description="Search for tools by keyword. Returns matching tool names, descriptions, and input schemas. Use this to find the right tool before calling execute_tool.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "Search keyword to match against tool names and descriptions",
-                            },
-                            "category": {
-                                "type": "string",
-                                "description": "Optional category to filter by (from list_categories)",
-                            },
-                            "limit": {
-                                "type": "integer",
-                                "description": "Max results to return (default 10)",
-                                "default": 10,
-                            },
-                        },
-                        "required": ["query"],
-                    },
-                ),
-                Tool(
-                    name="execute_tool",
-                    description=f"Execute a Bambuddy API tool by name. Use search_tools first to find the tool name and its required arguments. Images are saved to disk by default — use xdg-open to show them to the user. Only set embed_image=true if you need to analyze the image content yourself.{censor_note}",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "The tool name (from search_tools results)",
-                            },
-                            "arguments": {
-                                "type": "object",
-                                "description": "Arguments to pass to the tool (see input_schema from search_tools)",
-                                "default": {},
-                            },
-                            "embed_image": {
-                                "type": "boolean",
-                                "description": "Set to true to embed image data in the response instead of saving to a file (default: false)",
-                                "default": False,
-                            },
-                        },
-                        "required": ["name"],
-                    },
-                ),
-                Tool(
-                    name="find_printer",
-                    description=(
-                        "Find a printer by name. Returns printer details including "
-                        "the printer_id needed by other tools. Use this when you "
-                        "know a printer's name but need its ID."
-                    ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "Printer name or partial name to search for (case-insensitive)",
-                            },
-                        },
-                        "required": ["name"],
-                    },
-                ),
-            ]
+            return _build_proxy_tools(censor_note)
 
         @server.call_tool()
         async def call_tool_proxy(
@@ -252,6 +358,7 @@ async def main():
                 results = [
                     {
                         "name": t["name"],
+                        "access": _tool_access(t),
                         "description": t["description"],
                         "input_schema": t["input_schema"],
                     }
@@ -259,25 +366,14 @@ async def main():
                 ]
                 return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
-            if name == "execute_tool":
-                tool_name = arguments.get("name", "")
-                tool_args = arguments.get("arguments", {})
-                embed_image = arguments.get("embed_image", False)
-                if tool_name not in tool_map:
-                    return [
-                        TextContent(
-                            type="text",
-                            text=f"Unknown tool: {tool_name}. Use search_tools to find available tools.",
-                        )
-                    ]
-                async with httpx.AsyncClient(timeout=30) as client:
-                    return await execute_api_call(
-                        config,
-                        tool_map[tool_name],
-                        tool_args,
-                        client,
-                        embed_image=embed_image,
-                    )
+            if name in ("execute_read_tool", "execute_write_tool"):
+                expected_access = "read" if name == "execute_read_tool" else "write"
+                return await _execute_discovered_tool(
+                    expected_access,
+                    arguments,
+                    config,
+                    tool_map,
+                )
 
             if name == "find_printer":
                 printer_name = arguments.get("name", "")

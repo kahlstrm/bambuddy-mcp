@@ -73,7 +73,7 @@ The server uses the low-level MCP `Server` class (not `FastMCP`) so it can regis
 
 ## Modes
 
-- **Proxy mode** (default) — Exposes 4 meta-tools (`list_categories`, `search_tools`, `execute_tool`, `find_printer`) that let the AI discover and call tools on demand, keeping context usage minimal.
+- **Proxy mode** (default) — Exposes 5 meta-tools (`list_categories`, `search_tools`, `execute_read_tool`, `execute_write_tool`, `find_printer`) that let the AI discover and call tools on demand while enforcing read/write separation.
 - **Direct mode** (`BAMBUDDY_DIRECT_MODE=true`) — Exposes all 430+ tools directly. Uses more context but avoids the indirection layer.
 
 ## Build & Dependencies
