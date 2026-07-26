@@ -3,6 +3,13 @@
 import re
 
 
+def is_file_schema(schema: dict) -> bool:
+    return schema.get("type") == "string" and (
+        schema.get("format") == "binary"
+        or schema.get("contentMediaType") == "application/octet-stream"
+    )
+
+
 def clean_tool_name(operation_id: str) -> str:
     """Convert FastAPI operation IDs to readable tool names.
 
@@ -103,7 +110,7 @@ def build_input_schema(
         if resolved.get("type") == "object" and "properties" in resolved:
             for prop_name, prop_schema in resolved["properties"].items():
                 prop_schema.pop("title", None)
-                if prop_schema.get("format") == "binary":
+                if is_file_schema(prop_schema):
                     prop_schema = {
                         "type": "string",
                         "description": "File path to upload",
@@ -144,8 +151,7 @@ def get_file_param_names(operation: dict, spec: dict) -> set[str]:
     return {
         name
         for name, property_schema in properties.items()
-        if property_schema.get("type") == "string"
-        and property_schema.get("format") == "binary"
+        if is_file_schema(property_schema)
     }
 
 

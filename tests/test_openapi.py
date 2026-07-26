@@ -221,3 +221,75 @@ class TestParseOpenapiToTools:
         tools = parse_openapi_to_tools(spec)
         assert tools[0]["has_file_upload"] is True
         assert tools[0]["file_params"] == {"file"}
+
+    def test_detects_openapi_31_file_upload(self):
+        spec = {
+            "paths": {
+                "/upload": {
+                    "post": {
+                        "operationId": "upload_file_post",
+                        "tags": ["uploads"],
+                        "requestBody": {
+                            "content": {
+                                "multipart/form-data": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "file": {
+                                                "type": "string",
+                                                "contentMediaType": "application/octet-stream",
+                                            },
+                                        },
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            },
+            "components": {"schemas": {}},
+        }
+
+        tools = parse_openapi_to_tools(spec)
+
+        assert tools[0]["has_file_upload"] is True
+        assert tools[0]["file_params"] == {"file"}
+        assert tools[0]["input_schema"]["properties"]["file"] == {
+            "type": "string",
+            "description": "File path to upload",
+        }
+
+    def test_does_not_treat_json_content_as_file_upload(self):
+        spec = {
+            "paths": {
+                "/metadata": {
+                    "post": {
+                        "operationId": "upload_metadata_post",
+                        "requestBody": {
+                            "content": {
+                                "multipart/form-data": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "metadata": {
+                                                "type": "string",
+                                                "contentMediaType": "application/json",
+                                            },
+                                        },
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            },
+            "components": {"schemas": {}},
+        }
+
+        tools = parse_openapi_to_tools(spec)
+
+        assert tools[0]["file_params"] == set()
+        assert tools[0]["input_schema"]["properties"]["metadata"] == {
+            "type": "string",
+            "contentMediaType": "application/json",
+        }
