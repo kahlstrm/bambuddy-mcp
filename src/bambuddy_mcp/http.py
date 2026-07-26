@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import time
+from pathlib import Path
 from urllib.parse import urljoin
 
 import httpx
@@ -79,6 +80,29 @@ MIME_TO_EXT = {
 }
 
 
+def resolve_upload_path(upload_root: str | None, value: object) -> Path:
+    """Resolve a file argument and ensure it remains inside the upload root."""
+    if not upload_root:
+        raise ValueError("File uploads require BAMBUDDY_UPLOAD_ROOT")
+    if not isinstance(value, str):
+        raise ValueError("File upload arguments must be paths")
+
+    root = Path(upload_root).expanduser().resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError(f"Upload root is not a directory: {root}")
+
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    resolved = candidate.resolve(strict=True)
+
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"Upload path is outside upload root: {resolved}")
+    if not resolved.is_file():
+        raise ValueError(f"Upload path is not a file: {resolved}")
+    return resolved
+
+
 async def execute_api_call(
     config: Config,
     tool_def: dict,
@@ -109,9 +133,11 @@ async def execute_api_call(
     elif tool_def.get("has_file_upload"):
         files = {}
         data = {}
+        file_params = tool_def.get("file_params", set())
         for key, value in body_params.items():
-            if isinstance(value, str) and os.path.isfile(value):
-                files[key] = open(value, "rb")
+            if key in file_params:
+                path = resolve_upload_path(config.upload_root, value)
+                files[key] = path.open("rb")
             else:
                 data[key] = (
                     value if not isinstance(value, (dict, list)) else json.dumps(value)

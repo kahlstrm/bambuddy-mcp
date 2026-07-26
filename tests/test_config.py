@@ -5,14 +5,16 @@ import pytest
 from bambuddy_mcp.config import Config
 
 
-def test_config_from_env_defaults(monkeypatch):
+def test_config_from_env_defaults(monkeypatch, tmp_path):
     """Test default values when env vars not set."""
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("BAMBUDDY_URL", raising=False)
     monkeypatch.delenv("BAMBUDDY_API_KEY", raising=False)
     monkeypatch.delenv("BAMBUDDY_DIRECT_MODE", raising=False)
     monkeypatch.delenv("BAMBUDDY_CENSOR_ACCESS_CODE", raising=False)
     monkeypatch.delenv("BAMBUDDY_CENSOR_SERIAL", raising=False)
     monkeypatch.delenv("BAMBUDDY_CENSOR_MODEL_FILENAME", raising=False)
+    monkeypatch.delenv("BAMBUDDY_UPLOAD_ROOT", raising=False)
 
     config = Config.from_env()
 
@@ -22,6 +24,7 @@ def test_config_from_env_defaults(monkeypatch):
     assert config.censor_access_code is True
     assert config.censor_serial is True
     assert config.censor_model_filename is False
+    assert config.upload_root == str(tmp_path.resolve())
 
 
 def test_config_from_env_custom(monkeypatch):
@@ -32,6 +35,7 @@ def test_config_from_env_custom(monkeypatch):
     monkeypatch.setenv("BAMBUDDY_CENSOR_ACCESS_CODE", "false")
     monkeypatch.setenv("BAMBUDDY_CENSOR_SERIAL", "false")
     monkeypatch.setenv("BAMBUDDY_CENSOR_MODEL_FILENAME", "true")
+    monkeypatch.setenv("BAMBUDDY_UPLOAD_ROOT", "/workspace/models")
 
     config = Config.from_env()
 
@@ -41,6 +45,7 @@ def test_config_from_env_custom(monkeypatch):
     assert config.censor_access_code is False
     assert config.censor_serial is False
     assert config.censor_model_filename is True
+    assert config.upload_root == "/workspace/models"
 
 
 @pytest.mark.parametrize(

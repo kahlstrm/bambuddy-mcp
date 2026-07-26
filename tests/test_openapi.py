@@ -176,7 +176,8 @@ class TestParseOpenapiToTools:
                                             "file": {
                                                 "type": "string",
                                                 "format": "binary",
-                                            }
+                                            },
+                                            "description": {"type": "string"},
                                         },
                                     }
                                 }
@@ -189,3 +190,4 @@ class TestParseOpenapiToTools:
         }
         tools = parse_openapi_to_tools(spec)
         assert tools[0]["has_file_upload"] is True
+        assert tools[0]["file_params"] == {"file"}

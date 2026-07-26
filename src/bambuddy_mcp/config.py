@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -14,6 +15,7 @@ class Config:
     censor_access_code: bool
     censor_serial: bool
     censor_model_filename: bool
+    upload_root: str | None = None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -30,4 +32,6 @@ class Config:
             censor_access_code=_bool_env("BAMBUDDY_CENSOR_ACCESS_CODE", "true"),
             censor_serial=_bool_env("BAMBUDDY_CENSOR_SERIAL", "true"),
             censor_model_filename=_bool_env("BAMBUDDY_CENSOR_MODEL_FILENAME", "false"),
+            upload_root=os.environ.get("BAMBUDDY_UPLOAD_ROOT")
+            or str(Path.cwd().resolve()),
         )

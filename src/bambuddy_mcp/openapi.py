@@ -132,6 +132,23 @@ def build_tool_description(path: str, method: str, operation: dict) -> str:
     return "\n".join(parts)
 
 
+def get_file_param_names(operation: dict, spec: dict) -> set[str]:
+    """Return multipart fields explicitly declared as binary files."""
+    multipart = (
+        operation.get("requestBody", {})
+        .get("content", {})
+        .get("multipart/form-data", {})
+    )
+    schema = resolve_schema(multipart.get("schema", {}), spec)
+    properties = schema.get("properties", {})
+    return {
+        name
+        for name, property_schema in properties.items()
+        if property_schema.get("type") == "string"
+        and property_schema.get("format") == "binary"
+    }
+
+
 def parse_openapi_to_tools(spec: dict) -> list[dict]:
     """Parse an OpenAPI spec into a list of tool definitions."""
     tools = []
@@ -154,6 +171,7 @@ def parse_openapi_to_tools(spec: dict) -> list[dict]:
             input_schema, query_param_names = build_input_schema(
                 path, method, operation, spec
             )
+            file_param_names = get_file_param_names(operation, spec)
 
             tools.append(
                 {
@@ -164,6 +182,7 @@ def parse_openapi_to_tools(spec: dict) -> list[dict]:
                     "path": path,
                     "method": method,
                     "tag": operation.get("tags", [""])[0],
+                    "file_params": file_param_names,
                     "has_file_upload": "multipart/form-data"
                     in operation.get("requestBody", {}).get("content", {}),
                 }

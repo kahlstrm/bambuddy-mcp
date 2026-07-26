@@ -130,7 +130,18 @@ On NixOS, use the system Python to avoid dynamic linking issues:
 | `BAMBUDDY_CENSOR_ACCESS_CODE` | `true` | Mask `access_code` fields in API responses |
 | `BAMBUDDY_CENSOR_SERIAL` | `true` | Mask `serial_number` fields (keeps first 2 + last 2 chars) |
 | `BAMBUDDY_CENSOR_MODEL_FILENAME` | `false` | Mask model filenames (`.3mf`, `.gcode`) in API responses and prevent direct base64 image embedding |
+| `BAMBUDDY_UPLOAD_ROOT` | Current working directory | Restrict local file uploads to this directory |
 
 > **Note:** By default, the server exposes meta-tools (`list_categories`, `search_tools`, `execute_tool`, `find_printer`) that let AI assistants discover and call API endpoints on demand. Set `BAMBUDDY_DIRECT_MODE=true` to expose all 430+ tools directly (uses significantly more context).
 
+### Local file uploads
+
+Run `bambuddy-mcp` from the project directory containing the files you want to
+upload. The current working directory becomes the default upload root. Set
+`BAMBUDDY_UPLOAD_ROOT` when an MCP client launches the server from a different
+directory.
+
+Only multipart fields declared as binary files in Bambuddy's OpenAPI document
+are opened. Relative paths resolve from the upload root, and resolved paths
+outside that root—including escaping symlinks—are rejected.
 
