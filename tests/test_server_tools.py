@@ -46,9 +46,22 @@ def test_write_executor_annotations_are_conservative():
 def test_discovery_tools_are_read_only():
     tools = {tool.name: tool for tool in server._build_proxy_tools("")}
 
-    for name in ("list_categories", "search_tools", "find_printer"):
+    for name in (
+        "list_categories",
+        "search_tools",
+        "find_printer",
+        "get_camera_snapshot",
+    ):
         assert tools[name].annotations.readOnlyHint is True
         assert tools[name].annotations.destructiveHint is False
+
+
+def test_camera_snapshot_is_a_safe_read_without_token_input():
+    tools = {tool.name: tool for tool in server._build_proxy_tools("")}
+    snapshot = tools["get_camera_snapshot"]
+
+    assert snapshot.annotations.idempotentHint is True
+    assert "token" not in snapshot.inputSchema["properties"]
 
 
 def test_direct_tool_annotations_follow_access(read_tool, write_tool):

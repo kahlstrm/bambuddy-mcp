@@ -9,6 +9,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import ImageContent, TextContent, Tool, ToolAnnotations
 
+from bambuddy_mcp.camera import StreamTokenCache, get_camera_snapshot
 from bambuddy_mcp.config import Config
 from bambuddy_mcp.http import build_url, execute_api_call, fetch_openapi_spec
 from bambuddy_mcp.openapi import parse_openapi_to_tools
@@ -156,6 +157,29 @@ def _build_proxy_tools(censor_note: str) -> list[Tool]:
             },
             annotations=read_annotations,
         ),
+        Tool(
+            name="get_camera_snapshot",
+            description="Get a current camera snapshot for a printer.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "printer_id": {
+                        "type": "integer",
+                        "description": "Bambuddy printer ID",
+                    },
+                    "embed_image": {
+                        "type": "boolean",
+                        "description": (
+                            "Embed image data in the response instead of saving "
+                            "it to a temporary file"
+                        ),
+                        "default": True,
+                    },
+                },
+                "required": ["printer_id"],
+            },
+            annotations=read_annotations,
+        ),
     ]
 
 
@@ -278,6 +302,7 @@ async def main():
 
     tool_defs = parse_openapi_to_tools(spec)
     tool_map = {t["name"]: t for t in tool_defs}
+    stream_token_cache = StreamTokenCache()
     mode = "direct" if config.direct_mode else "proxy"
     print(
         f"Loaded {len(tool_defs)} tools from OpenAPI spec (mode: {mode})",
@@ -318,7 +343,7 @@ async def main():
                 )
 
     else:
-        # Proxy mode (default): expose 5 meta-tools for discovery + execution
+        # Proxy mode (default): expose meta-tools for discovery + execution
         censored = []
         if config.censor_access_code:
             censored.append("access_code")
@@ -385,6 +410,26 @@ async def main():
                         )
                     ]
                 return await _find_printers(printer_name, config, tool_map)
+
+            if name == "get_camera_snapshot":
+                printer_id = arguments.get("printer_id")
+                if printer_id is None:
+                    return [
+                        TextContent(
+                            type="text",
+                            text=(
+                                "The 'printer_id' parameter is required for "
+                                "get_camera_snapshot."
+                            ),
+                        )
+                    ]
+                return await get_camera_snapshot(
+                    printer_id,
+                    arguments.get("embed_image", True),
+                    config,
+                    tool_map,
+                    stream_token_cache,
+                )
 
             return [TextContent(type="text", text=f"Unknown meta-tool: {name}")]
 

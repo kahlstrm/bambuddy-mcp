@@ -9,15 +9,16 @@ This MCP server dynamically generates tools from Bambuddy's OpenAPI spec at star
 
 On startup, the server fetches the OpenAPI spec from your running Bambuddy instance (`/openapi.json`), parses all 430+ endpoints, and indexes them by category.
 
-By default, only **5 meta-tools** are registered with the AI assistant:
+By default, only a small set of proxy tools is registered with the AI assistant:
 
-| Meta-tool | Purpose |
+| Proxy tool | Purpose |
 |-----------|---------|
 | `list_categories` | Browse available API categories |
 | `search_tools` | Find tools by keyword and inspect their read/write access |
 | `execute_read_tool` | Call a discovered `GET` operation |
 | `execute_write_tool` | Call a discovered non-`GET` operation |
 | `find_printer` | Find a printer ID by name |
+| `get_camera_snapshot` | Get a current camera snapshot by printer ID |
 
 This keeps the context window small while still providing full API coverage. The AI searches for what it needs, inspects the input schema, and executes — all on demand.
 
