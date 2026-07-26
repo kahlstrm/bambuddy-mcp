@@ -2,10 +2,8 @@
 
 import base64
 import json
-import os
 import re
 import tempfile
-import time
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -187,10 +185,15 @@ async def execute_api_call(
             return [ImageContent(type="image", data=b64_data, mimeType=mime_type)]
         ext = MIME_TO_EXT.get(mime_type, ".bin")
         name = tool_def.get("name", "image")
-        ts = int(time.time())
-        path = os.path.join(tempfile.gettempdir(), f"bambuddy_{name}_{ts}{ext}")
-        with open(path, "wb") as f:
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", name)[:80] or "image"
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=f"bambuddy_{safe_name}_",
+            suffix=ext,
+            delete=False,
+        ) as f:
             f.write(response.content)
+            path = f.name
         size_kb = len(response.content) / 1024
         msg = f"Image saved to {path} ({size_kb:.0f}KB, {mime_type})"
         if embed_image and config.censor_model_filename:

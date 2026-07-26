@@ -1,6 +1,8 @@
 """Tests for HTTP execution."""
 
 import os
+import stat
+from pathlib import Path
 
 import pytest
 import respx
@@ -80,7 +82,7 @@ class TestExecuteApiCall:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_image_response_saves_to_file(self, config, tool_def):
+    async def test_image_response_saves_to_file(self, config, tool_def, request):
         respx.get("http://test.local/items/123").mock(
             return_value=Response(
                 200,
@@ -100,7 +102,62 @@ class TestExecuteApiCall:
         assert ".png" in result[0].text
         # Clean up
         path = result[0].text.split("Image saved to ")[1].split(" ")[0]
-        os.unlink(path)
+        request.addfinalizer(lambda: os.path.exists(path) and os.unlink(path))
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_image_response_uses_unique_path(self, config, tool_def, request):
+        route = respx.get("http://test.local/items/123").mock(
+            side_effect=[
+                Response(
+                    200,
+                    content=b"first",
+                    headers={"content-type": "image/png"},
+                ),
+                Response(
+                    200,
+                    content=b"second",
+                    headers={"content-type": "image/png"},
+                ),
+            ]
+        )
+
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            first = await execute_api_call(config, tool_def, {"id": "123"}, client)
+            second = await execute_api_call(config, tool_def, {"id": "123"}, client)
+
+        assert route.call_count == 2
+        first_path = first[0].text.split("Image saved to ")[1].split(" ")[0]
+        second_path = second[0].text.split("Image saved to ")[1].split(" ")[0]
+        for path in {first_path, second_path}:
+            request.addfinalizer(
+                lambda path=path: os.path.exists(path) and os.unlink(path)
+            )
+        assert first_path != second_path
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_image_response_sanitizes_tool_name(self, config, tool_def, request):
+        tool_def = {**tool_def, "name": "camera/snapshot"}
+        respx.get("http://test.local/items/123").mock(
+            return_value=Response(
+                200,
+                content=b"snapshot",
+                headers={"content-type": "image/png"},
+            )
+        )
+
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            result = await execute_api_call(config, tool_def, {"id": "123"}, client)
+
+        path = result[0].text.split("Image saved to ")[1].split(" ")[0]
+        request.addfinalizer(lambda: os.path.exists(path) and os.unlink(path))
+        assert Path(path).name.startswith("bambuddy_camera_snapshot_")
 
     @pytest.mark.asyncio
     @respx.mock
