@@ -2,8 +2,10 @@
 
 import base64
 import json
+import mimetypes
 import re
 import tempfile
+from email.message import Message
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -76,6 +78,32 @@ MIME_TO_EXT = {
     "image/bmp": ".bmp",
     "image/tiff": ".tiff",
 }
+
+
+def _save_temporary_file(content: bytes, tool_name: str, suffix: str) -> Path:
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", tool_name)[:80] or "download"
+    with tempfile.NamedTemporaryFile(
+        mode="wb",
+        prefix=f"bambuddy_{safe_name}_",
+        suffix=suffix,
+        delete=False,
+    ) as file:
+        file.write(content)
+        return Path(file.name)
+
+
+def _download_suffix(response: httpx.Response, mime_type: str) -> str:
+    disposition = response.headers.get("content-disposition")
+    if disposition:
+        message = Message()
+        message["content-disposition"] = disposition
+        filename = message.get_filename()
+        if filename:
+            suffix = "".join(Path(filename).suffixes[-2:])
+            safe_suffix = re.sub(r"[^A-Za-z0-9._-]", "_", suffix)[:32]
+            if safe_suffix.startswith("."):
+                return safe_suffix
+    return mimetypes.guess_extension(mime_type) or ".bin"
 
 
 def resolve_upload_path(upload_root: str | None, value: object) -> Path:
@@ -185,15 +213,7 @@ async def execute_api_call(
             return [ImageContent(type="image", data=b64_data, mimeType=mime_type)]
         ext = MIME_TO_EXT.get(mime_type, ".bin")
         name = tool_def.get("name", "image")
-        safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", name)[:80] or "image"
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            prefix=f"bambuddy_{safe_name}_",
-            suffix=ext,
-            delete=False,
-        ) as f:
-            f.write(response.content)
-            path = f.name
+        path = _save_temporary_file(response.content, name, ext)
         size_kb = len(response.content) / 1024
         msg = f"Image saved to {path} ({size_kb:.0f}KB, {mime_type})"
         if embed_image and config.censor_model_filename:
@@ -207,11 +227,17 @@ async def execute_api_call(
 
     # Handle other binary responses
     if content_type.startswith(("application/octet-stream", "video/", "audio/")):
-        b64_data = base64.b64encode(response.content).decode("ascii")
+        mime_type = content_type.split(";")[0].strip()
+        suffix = _download_suffix(response, mime_type)
+        name = tool_def.get("name", "download")
+        path = _save_temporary_file(response.content, name, suffix)
         return [
             TextContent(
                 type="text",
-                text=f"Binary response ({content_type}, {len(response.content)} bytes), base64-encoded:\n{b64_data}",
+                text=(
+                    f"Binary saved to {path} "
+                    f"({len(response.content)} bytes, {mime_type})"
+                ),
             )
         ]
 

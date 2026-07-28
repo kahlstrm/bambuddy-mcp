@@ -69,7 +69,7 @@ The server uses the low-level MCP `Server` class (not `FastMCP`) so it can regis
 - File uploads use multipart/form-data
 - Auth via `X-API-Key` header
 - Image responses (`image/*`) are returned as `ImageContent` with base64 data
-- Other binary responses (video, audio, octet-stream) are returned as base64-encoded text
+- Other binary responses (video, audio, octet-stream) are saved as private files in the operating system's temporary directory
 
 ## Modes
 

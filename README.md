@@ -22,7 +22,12 @@ By default, only a small set of proxy tools is registered with the AI assistant:
 
 This keeps the context window small while still providing full API coverage. The AI searches for what it needs, inspects the input schema, and executes — all on demand.
 
-When a tool is called, the server makes the corresponding HTTP request to Bambuddy and returns the response. JSON responses are returned as text, while binary responses (e.g. camera snapshots) are returned as native MCP `ImageContent` with base64-encoded data so AI assistants can see, process, and display them directly.
+When a tool is called, the server makes the corresponding HTTP request to
+Bambuddy and returns the response. JSON responses are returned as text. Images
+can be returned as native MCP `ImageContent`, while downloaded files, video,
+and audio are written to uniquely named private files in the operating
+system's temporary directory. The tool response contains the local path,
+content type, and size instead of embedding the binary data as base64 text.
 
 ## Example Usage
 

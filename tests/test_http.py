@@ -2,6 +2,7 @@
 
 import os
 import stat
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -213,6 +214,39 @@ class TestExecuteApiCall:
         # Clean up
         path = result[0].text.split("Image saved to ")[1].split(" ")[0]
         os.unlink(path)
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_binary_response_saves_to_temporary_file(
+        self, config, tool_def, request
+    ):
+        payload = b"PK\x03\x04sliced-model"
+        respx.get("http://test.local/items/123").mock(
+            return_value=Response(
+                200,
+                content=payload,
+                headers={
+                    "content-type": "application/octet-stream",
+                    "content-disposition": ('attachment; filename="spacers.gcode.3mf"'),
+                },
+            )
+        )
+
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            result = await execute_api_call(config, tool_def, {"id": "123"}, client)
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert result[0].text.startswith("Binary saved to ")
+        path = Path(result[0].text.split("Binary saved to ", 1)[1].split(" (", 1)[0])
+        request.addfinalizer(lambda: path.exists() and path.unlink())
+        assert path.parent.resolve() == Path(tempfile.gettempdir()).resolve()
+        assert path.name.endswith(".gcode.3mf")
+        assert path.read_bytes() == payload
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert "base64" not in result[0].text
 
     @pytest.mark.asyncio
     @respx.mock
